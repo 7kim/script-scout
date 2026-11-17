@@ -218,13 +218,21 @@ def scan_logs(args):
     return root, calls, requests, commands, sessions, first, last
 
 
+WIDTH = 120  # no output line is longer: long paths and names are cut, never wrapped
+
+
+def say(text):
+    for line in str(text).split("\n"):
+        print(line if len(line) <= WIDTH else line[:WIDTH - 1] + "…")
+
+
 def table(title, rows, header):
     if not rows:
         return
-    print(f"\n{title}")
-    print("  " + header)
+    say(f"\n{title}")
+    say("  " + header)
     for r in rows:
-        print("  " + r)
+        say("  " + r)
 
 
 def cmd_scan(args):
@@ -232,11 +240,11 @@ def cmd_scan(args):
     top = args.top
     where = f"repo {root}" if root else "all projects"
     if not calls:
-        print(f"script-scout · {where} · no tool calls found in the logs (homes: {', '.join(homes(args.home)) or 'none'})")
+        say(f"script-scout · {where} · no tool calls found in the logs (homes: {', '.join(homes(args.home)) or 'none'})")
         return {}
     n_s = max(len(sessions), 1)
-    print(f"script-scout · {where} · {len(sessions)} sessions · {first[:10]}..{last[:10]} · {len(calls)} tool calls")
-    print("tokens ≈ bytes/4 · in = what tools returned · out = what Claude wrote into the call")
+    say(f"script-scout · {where} · {len(sessions)} sessions · {first[:10]}..{last[:10]} · {len(calls)} tool calls")
+    say("tokens ≈ bytes/4 · in = what tools returned · out = what Claude wrote into the call")
 
     by_tool = collections.defaultdict(lambda: [0, 0, 0])
     for r in calls:
@@ -310,7 +318,7 @@ def cmd_scan(args):
             "families": {k: [v[0], tok(v[1])] for k, v in sorted(fam.items(), key=lambda kv: -kv[1][0])[:40]}}
     if args.save:
         append(state_file(args), snap)
-        print(f"\nsaved this scan to {state_file(args)}")
+        say(f"\nsaved this scan to {state_file(args)}")
     return snap
 
 
@@ -337,15 +345,15 @@ def append(path, rec):
 def print_history(args, calls, commands, fam, n_sessions):
     hist = read_history(state_file(args))
     if not hist:
-        print("\nHISTORY: none yet (scan --save and decide write it)")
+        say("\nHISTORY: none yet (scan --save and decide write it)")
         return
     scans = [h for h in hist if h.get("kind") == "scan"]
     decisions = [h for h in hist if h.get("kind") == "decision"]
-    print(f"\nHISTORY ({state_file(args)})")
+    say(f"\nHISTORY ({state_file(args)})")
     if scans:
         prev = scans[-1]
         ps = max(prev.get("sessions") or 1, 1)
-        print(f"  last scan {prev['ts'][:10]}: uses per session, then → now (top changes)")
+        say(f"  last scan {prev['ts'][:10]}: uses per session, then → now (top changes)")
         changes = []
         for k, (n, _) in prev.get("families", {}).items():
             now = fam.get(k, [0])[0] / n_sessions
@@ -353,7 +361,7 @@ def print_history(args, calls, commands, fam, n_sessions):
             if was and abs(now - was) / was >= 0.25:
                 changes.append((abs(now - was), f"  {k[:26]:26} {was:6.1f} → {now:5.1f}"))
         for _, line in sorted(changes, reverse=True)[:8]:
-            print(line)
+            say(line)
     for d in decisions:
         line = f"  {d['ts'][:10]} {d['id']}: {d['decision']}"
         if d.get("script"):
@@ -365,7 +373,7 @@ def print_history(args, calls, commands, fam, n_sessions):
             line += f" · pattern '{d['pattern']}' now {fam.get(d['pattern'], [0])[0]} uses"
         if d.get("note"):
             line += f" · {d['note'][:60]}"
-        print(line)
+        say(line)
 
 
 def cmd_decide(args):
@@ -374,18 +382,18 @@ def cmd_decide(args):
     rec = {"kind": "decision", "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
            "id": args.id, "decision": args.decision, "script": args.script, "pattern": args.pattern, "note": args.note}
     append(state_file(args), rec)
-    print(f"recorded {args.id}: {args.decision} in {state_file(args)}")
+    say(f"recorded {args.id}: {args.decision} in {state_file(args)}")
 
 
 def cmd_history(args):
     hist = read_history(state_file(args))
     if not hist:
-        print(f"no history at {state_file(args)}")
+        say(f"no history at {state_file(args)}")
     for h in hist:
         if h.get("kind") == "scan":
-            print(f"{h['ts'][:10]} scan · {h.get('sessions')} sessions · top: {', '.join(list(h.get('families', {}))[:5])}")
+            say(f"{h['ts'][:10]} scan · {h.get('sessions')} sessions · top: {', '.join(list(h.get('families', {}))[:5])}")
         else:
-            print(f"{h['ts'][:10]} {h['id']}: {h['decision']}" + (f" ({h['script']})" if h.get("script") else ""))
+            say(f"{h['ts'][:10]} {h['id']}: {h['decision']}" + (f" ({h['script']})" if h.get("script") else ""))
 
 
 def main(argv=None):
@@ -397,7 +405,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan", parents=[common])
     s.add_argument("--since", help="YYYY-MM-DD")
-    s.add_argument("--top", type=int, default=12)
+    s.add_argument("--top", type=int, default=10, help="rows per table (default 10)")
     s.add_argument("--save", action="store_true", help="append this scan to the history file")
     d = sub.add_parser("decide", parents=[common])
     d.add_argument("id")

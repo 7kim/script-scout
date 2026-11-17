@@ -78,6 +78,30 @@ class Scout(unittest.TestCase):
         self.assertNotIn(SECRET, out)
         self.assertNotIn("make deploy", out)                 # another repo's session is left out
 
+    def test_no_line_is_longer_than_120_characters(self):
+        long_root = os.path.join(self.tmp.name, "r" * 150)
+        os.makedirs(long_root)
+        proj = os.path.join(self.home, "projects", "-long")
+        os.makedirs(proj)
+        rows = []
+        for i in range(3):
+            use, res = bash(200 + i, "x" * 300 + f" {i}")
+            use["cwd"] = res["cwd"] = long_root
+            use["message"]["content"][0]["name"] = "mcp__" + "y" * 200
+            rows += [use, res]
+        rows += ask("z" * 300, cwd=long_root)
+        with open(os.path.join(proj, "s3.jsonl"), "w") as fh:
+            fh.write("\n".join(json.dumps(r) for r in rows) + "\n")
+        r = subprocess.run([sys.executable, "-I", SCOUT, "scan", "--home", self.home, "--root", long_root],
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("…", r.stdout)  # the summary line with the long path was cut
+        self.assertEqual([l for l in r.stdout.splitlines() if len(l) > 120], [])
+
+    def test_top_defaults_to_10(self):
+        r = subprocess.run([sys.executable, "-I", SCOUT, "scan", "--help"], capture_output=True, text=True, timeout=60)
+        self.assertIn("default 10", r.stdout)
+
     def test_user_scope_sees_every_project(self):
         self.assertIn("make deploy", self.run_scout("scan", "--scope", "user"))
 
