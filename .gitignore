@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.claude/script-scout/
+TO-DO-LATER.md
