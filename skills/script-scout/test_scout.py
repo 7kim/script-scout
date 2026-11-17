@@ -119,6 +119,33 @@ class Scout(unittest.TestCase):
         self.assertIn("pattern 'cargo test' now 5 uses", out)
         self.assertTrue(os.path.isfile(os.path.join(ROOT, ".claude", "script-scout", "history.jsonl")))
 
+    def test_sessions_table_shows_start_and_peak_context_once_per_message(self):
+        proj = os.path.join(self.home, "projects", "-repo")
+
+        def reply(sid, mid, ctx, out, ts):
+            use = {"input_tokens": 2, "cache_creation_input_tokens": ctx - 2 - ctx // 2,
+                   "cache_read_input_tokens": ctx // 2, "output_tokens": out}
+            return {"type": "assistant", "cwd": ROOT, "sessionId": sid, "timestamp": ts,
+                    "message": {"id": mid, "usage": use, "content": [{"type": "text", "text": "hi"}]}}
+        rows = [reply("big", "m1", 86_900, 100, "2026-11-17T10:00:00Z"),
+                reply("big", "m1", 86_900, 100, "2026-11-17T10:00:01Z"),  # the same message, logged per content block
+                reply("big", "m2", 493_000, 300, "2026-11-17T11:00:00Z"),
+                reply("big", "m3", 120_000, 50, "2026-11-17T12:00:00Z"),
+                {"type": "custom-title", "customTitle": "first name", "sessionId": "big"},
+                {"type": "custom-title", "customTitle": "build session", "sessionId": "big"},
+                reply("small", "n1", 20_000, 10, "2026-11-17T10:00:00Z"),
+                {**reply("small", "n2", 0, 0, "2026-11-17T10:05:00Z"),
+                 "message": {"id": "n2", "usage": {"input_tokens": None, "output_tokens": None}}}]  # null fields count 0
+        with open(os.path.join(proj, "s4.jsonl"), "w") as fh:
+            fh.write("\n".join(json.dumps(r) for r in rows) + "\n")
+        out = self.run_scout("scan").splitlines()
+        i = out.index("SESSIONS (by peak context)")
+        big, small = out[i + 2].split(), out[i + 3].split()
+        self.assertEqual(out[i + 2].split("  ")[1].strip(), "build session")  # the last rename wins
+        self.assertEqual(big[-5:], ["3", "86,900", "493,000", "450", f"{43_450 + 246_500 + 60_000:,}"])
+        self.assertEqual(small[0], "small")  # no title: the session id
+        self.assertEqual(small[-5:], ["2", "20,000", "20,000", "10", "10,000"])
+
     def test_decide_refuses_an_unsafe_id(self):
         r = subprocess.run([sys.executable, "-I", SCOUT, "decide", "../x", "built", "--home", self.home, "--root", ROOT],
                            capture_output=True, text=True, timeout=60)

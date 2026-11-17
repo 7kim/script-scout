@@ -160,6 +160,8 @@ def scan_logs(args):
     requests = collections.Counter()
     commands = collections.Counter()  # /slash-command uses
     sessions, first, last = set(), None, None
+    usage = collections.defaultdict(dict)  # session -> message id -> (ts, usage); a message is logged once per content block
+    titles = {}
     for f in log_files(homes(args.home)):
         decided = None
         pending = {}
@@ -176,6 +178,11 @@ def scan_logs(args):
             m = e.get("message") or {}
             c = m.get("content")
             sid = e.get("sessionId") or f
+            if e.get("type") == "custom-title" and e.get("customTitle"):
+                titles[sid] = e["customTitle"]  # the last rename wins
+            u = m.get("usage") if isinstance(m, dict) else None
+            if e.get("type") == "assistant" and isinstance(u, dict) and m.get("id") and not sub:
+                usage[sid].setdefault(m["id"], (ts, u))
             if e.get("type") == "user" and not e.get("isMeta") and not sub:
                 texts = [c] if isinstance(c, str) else [b.get("text", "") for b in c or [] if isinstance(b, dict) and b.get("type") == "text"]
                 for t in texts:
@@ -215,7 +222,7 @@ def scan_logs(args):
                     if rec is not None:
                         cc = b.get("content")
                         rec["in_b"] += result_bytes(cc)
-    return root, calls, requests, commands, sessions, first, last
+    return root, calls, requests, commands, sessions, first, last, usage, titles
 
 
 WIDTH = 120  # no output line is longer: long paths and names are cut, never wrapped
@@ -236,7 +243,7 @@ def table(title, rows, header):
 
 
 def cmd_scan(args):
-    root, calls, requests, commands, sessions, first, last = scan_logs(args)
+    root, calls, requests, commands, sessions, first, last, usage, titles = scan_logs(args)
     top = args.top
     where = f"repo {root}" if root else "all projects"
     if not calls:
@@ -310,6 +317,18 @@ def cmd_scan(args):
 
     rq = [(k, v) for k, v in requests.most_common(top) if v >= 2]
     table("REPEATED REQUESTS (first 40 chars, digits masked)", [f"{v:5}  {k}" for k, v in rq], f"{'times':>5}  request")
+
+    sess = []
+    for sid, msgs in usage.items():
+        n = lambda u, k: u.get(k) or 0  # a usage field may be missing or null
+        ctx = [(ts, n(u, "input_tokens") + n(u, "cache_creation_input_tokens") + n(u, "cache_read_input_tokens"))
+               for ts, u in sorted(msgs.values(), key=lambda x: x[0])]
+        sess.append((titles.get(sid) or sid[:8], len(msgs), ctx[0][1], max(c for _, c in ctx),
+                     sum(n(u, "output_tokens") for _, u in msgs.values()),
+                     sum(n(u, "cache_read_input_tokens") for _, u in msgs.values())))
+    table("SESSIONS (by peak context)",
+          [f"{redact(t)[:40]:40}  {n:>5} {a:>9,} {b:>9,} {o:>8,} {c:>12,}" for t, n, a, b, o, c in sorted(sess, key=lambda r: -r[3])[:top]],
+          f"{'session (title or id)':40}  {'calls':>5} {'start':>9} {'peak':>9} {'output':>8} {'cached read':>12}")
 
     print_history(args, calls, commands, fam, n_s)
 

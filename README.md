@@ -18,6 +18,7 @@ A Claude Code skill that reads your own session logs, finds the work you and Cla
    - commands that always run together
    - skills and slash commands used
    - repeated requests
+   - each session's starting and peak context, output and cached input re-read
 2. **Learn.** It compares this run with earlier scans and decisions. A script you built that is never used is reported as a miss.
 3. **Measure, check, design.** For each costly pattern, Claude checks the cheaper fixes first: a flag, an existing script, a native Claude Code feature, an installed skill. It designs a new script only when none of those cover the pattern.
 4. **Present, then spec.** You pick which candidates to keep. Claude writes a full spec covering evidence, commands, token budget, tests, rollout order and the learning loop, using the bundled template. No other skill is needed.
