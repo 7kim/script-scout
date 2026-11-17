@@ -51,7 +51,7 @@ Everything stays on your machine. The report never prints prompt text beyond the
 
 ## Requirements
 
-Python 3.9+ (tests pass on 3.9 and 3.15) and Claude Code. No dependencies.
+Python 3 and Claude Code. No dependencies. Tests run on the newest stable Python that [uv](https://docs.astral.sh/uv/) offers: `./test.sh` here, and on every push in GitHub Actions.
 
 ## Test
 
