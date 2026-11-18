@@ -5,5 +5,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3; installs the latest uv, so its Python list is the newest
+      # uv's version comes from one place: VibeConsole's mise.toml (claude-scripts 64); test.sh reads it too.
+      - id: pin
+        run: |
+          uv=$(curl -fsSL https://raw.githubusercontent.com/7kim/VibeConsole/master/mise.toml | sed -n 's/^uv = "\([^"]*\)".*/\1/p')
+          test -n "$uv" || { echo "can't read uv's version from VibeConsole's mise.toml"; exit 1; }
+          echo "uv=$uv" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: ${{ steps.pin.outputs.uv }}
       - run: ./test.sh
